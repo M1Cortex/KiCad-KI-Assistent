@@ -74,6 +74,14 @@ print("OK: sauber beendet")
 
 
 def main() -> int:
+    # The child prints German text; the Windows console defaults to cp1252 and
+    # would raise on characters outside it.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     args = sys.argv[1:]
     show = "--show" in args
     project = DEFAULT_PROJECT
