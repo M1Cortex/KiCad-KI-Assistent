@@ -107,13 +107,46 @@ def _resolve() -> str | None:
     return _discover_project()
 
 
+def _report(message: str, detail: str = "") -> None:
+    """Show an explanatory dialog instead of failing silently.
+
+    KiCad only surfaces the exit code to the user, so a bare ``return 1`` looks
+    like an unexplained crash. The dialog names the cause and the way out.
+    """
+    print(f"[kicad-ai] {message}", file=sys.stderr)
+    if detail:
+        print(f"[kicad-ai] {detail}", file=sys.stderr)
+
+    try:
+        import wx
+    except ImportError:
+        return
+
+    app = wx.GetApp()
+    owns_app = False
+    if app is None:
+        app = wx.App(False)
+        owns_app = True
+    try:
+        wx.MessageBox(
+            f"{message}\n\n{detail}" if detail else message,
+            "KiCad KI-Assistent",
+            wx.OK | wx.ICON_INFORMATION,
+        )
+    finally:
+        if owns_app:
+            app.Destroy()
+
+
 def main() -> int:
     project = _resolve()
     if not project:
-        print(
-            "[kicad-ai] Kein Projekt gefunden. Bitte ein Projekt öffnen oder "
-            "KICAD_AI_PROJECT setzen.",
-            file=sys.stderr,
+        _report(
+            "Es wurde kein KiCad-Projekt gefunden.",
+            "Öffne zuerst ein Projekt (.kicad_pro) im Projektmanager oder im "
+            "PCB-Editor und klicke dann erneut auf die Aktion.\n\n"
+            "Alternativ kannst du ein Projekt auswählen:\n"
+            "Plugin → Aktion rechtsklicken → Argumente",
         )
         return 1
 

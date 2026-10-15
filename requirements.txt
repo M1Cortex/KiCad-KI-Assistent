@@ -1,6 +1,13 @@
-# KiCad AI Review - Abhängigkeiten
+# KiCad KI-Assistent - Abhängigkeiten
 #
-# Bewusst minimal: alles Nötige bringt KiCads eigenes Python bereits mit
-# (requests, wxPython, Pillow). Deshalb ist 'requests' die einzige harte
-# Abhängigkeit, damit der MCP-/HTTP-Client auch ausserhalb von KiCad läuft.
+# wxPython und Pillow bringt KiCads eigenes Python bereits mit und werden hier
+# bewusst nicht gelistet, damit KiCad keine Rad-Duplikate installiert.
+#
+# requests  - HTTP-Client für Ollama und OpenAI-kompatible APIs.
+#             Auch ausserhalb von KiCad nötig (CLI, MCP-Server, CI).
 requests>=2.31.0
+
+# kicad-python - offizielle Bindings der KiCad-IPC-API (Paketname "kipy").
+# Nötig, damit die Toolbar-Action das gerade geöffnete Projekt über IPC
+# ermitteln kann. Ohne dieses Paket findet das Plugin kein Projekt.
+kicad-python>=0.8.0

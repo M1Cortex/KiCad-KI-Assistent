@@ -1,20 +1,20 @@
 {
   "$schema": "https://go.kicad.org/pcm/schemas/v2",
-  "name": "AI Schaltplan-Review",
-  "description": "KI-gestÃ¼tztes Schaltplan-Review fÃ¼r KiCad mit MCP-Server",
-  "description_full": "KI-gestÃ¼tztes Review fÃ¼r KiCad-SchaltplÃ¤ne.\n\nFunktionen:\nâ€¢ Deterministische PrÃ¼fregeln (40+) fÃ¼r Netze, Versorgung, Pins, StÃ¼ckliste, Annotation und Hierarchie\nâ€¢ Integration der offiziellen KiCad-ERC-Ergebnisse als JSON\nâ€¢ Abgleich der Verbindungstopologie: NetzauflÃ¶sung, Connectivity-Tracing zwischen Bauteilen\nâ€¢ Anforderungsableitung aus dem Schaltplan mit ErfÃ¼llungsstatus\nâ€¢ KI-Antwort Ã¼ber Ollama (lokal) oder jede OpenAI-kompatible API\nâ€¢ MCP-Server mit 11 Werkzeugen fÃ¼r externe KI-Agenten (Claude Desktop, Cursor, VS Code)\nâ€¢ Reports als Text, Markdown, HTML und JSON, Exit-Code-Gating fÃ¼r CI\n\nUnterstÃ¼tzt KiCad 10 (IPC-Plugin im PCB-Editor); die Schaltplan-Actions werden automatisch in KiCad 11 aktiv, wo die IPC-API den Schaltplan-Editor abdeckt.",
-  "identifier": "org.kicad.ai_review",
+  "name": "KI Schaltplan-Review",
+  "description": "KI-gestuetztes Schaltplan-Review fuer KiCad mit MCP-Server",
+  "description_full": "KI-gestuetztes Review fuer KiCad-Schaltplaene.\n\nFunktionen:\n- 23 deterministische Pruefregeln fuer Netze, Versorgung, Pins, Stueckliste, Annotation und Hierarchie\n- Integration der offiziellen KiCad-ERC-Ergebnisse als JSON\n- Abgleich der Verbindungstopologie: Netzaufloesung und Connectivity-Tracing zwischen Bauteilen\n- Anforderungsableitung aus dem Schaltplan mit Erfuellungsstatus\n- KI-Antwort ueber Ollama (lokal) oder jede OpenAI-kompatible API\n- MCP-Server mit 11 Werkzeugen fuer externe KI-Agenten (Claude Desktop, Cursor, VS Code)\n- Reports als Text, Markdown, HTML und JSON, Exit-Code-Gating fuer CI\n\nUnterstuetzt KiCad 10 (IPC-Plugin im PCB-Editor). Ab KiCad 11 erscheinen die Aktionen zusaetzlich im Schaltplan-Editor.",
+  "identifier": "org.kicad.ai-review",
   "type": "plugin",
   "category": "plugin",
   "author": {
-    "name": "KiCad AI Review Contributors",
+    "name": "KiCad KI-Assistent Contributors",
     "contact": {
       "web": "https://github.com/M1Cortex/KiCad-KI-Assistent",
       "source": "https://github.com/M1Cortex/KiCad-KI-Assistent"
     }
   },
   "maintainer": {
-    "name": "KiCad AI Review Contributors",
+    "name": "KiCad KI-Assistent Contributors",
     "contact": {
       "web": "https://github.com/M1Cortex/KiCad-KI-Assistent"
     }
@@ -34,7 +34,7 @@
     "homepage": "https://github.com/M1Cortex/KiCad-KI-Assistent",
     "source": "https://github.com/M1Cortex/KiCad-KI-Assistent",
     "issues": "https://github.com/M1Cortex/KiCad-KI-Assistent/issues",
-    "documentation": "https://github.com/M1Cortex/KiCad-KI-Assistent#readme"
+    "documentation": "https://github.com/M1Cortex/KiCad-KI-Assistent/blob/main/INSTALL.md"
   },
   "versions": [
     {

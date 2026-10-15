@@ -70,7 +70,7 @@ Beim ersten Start legt KiCad automatisch eine Python-Umgebung für das Plugin an
 ### 6. Installation prüfen
 
 ```powershell
-cd "$env:USERPROFILE\Documents\KiCad\10.0\plugins\org.kicad.ai_review"
+cd "$env:USERPROFILE\Documents\KiCad\10.0\plugins\org.kicad.ai-review"
 powershell -ExecutionPolicy Bypass -File doctor.ps1
 ```
 
@@ -83,7 +83,7 @@ Erwartet: `Ergebnis: alle Pruefungen bestanden.`
 Funktioniert unabhängig von KiCad. Ideal für CI und zum Ausprobieren.
 
 ```powershell
-cd "$env:USERPROFILE\Documents\KiCad\10.0\plugins\org.kicad.ai_review"
+cd "$env:USERPROFILE\Documents\KiCad\10.0\plugins\org.kicad.ai-review"
 
 # Vollständiges Review
 & "C:\Program Files\KiCad\10.0\bin\python.exe" -m kicad_ai review C:\Pfad\zu\board.kicad_sch
@@ -106,9 +106,9 @@ cd "$env:USERPROFILE\Documents\KiCad\10.0\plugins\org.kicad.ai_review"
 Falls der PCM-Import nicht funktioniert:
 
 1. ZIP entpacken — es enthält `metadata.json` und `plugins/`
-2. Den Ordner `plugins\org.kicad.ai_review` kopieren nach:
+2. Den Ordner `plugins\org.kicad.ai-review` kopieren nach:
    ```
-   %USERPROFILE%\Documents\KiCad\10.0\plugins\org.kicad.ai_review
+   %USERPROFILE%\Documents\KiCad\10.0\plugins\org.kicad.ai-review
    ```
 3. IPC-Server aktivieren (Schritt 3 oben)
 4. KiCad neu starten
@@ -162,8 +162,8 @@ kopiert. Dann in die MCP-Client-Konfiguration einfügen.
 **Werkzeuge → Plugin- und Content-Verwaltung → Reiter „Installiert" →
 Paket markieren → Deinstallieren → Änderungen anwenden**
 
-Manuell: Ordner `%USERPROFILE%\Documents\KiCad\10.0\plugins\org.kicad.ai_review`
-und das Python-Environment unter `%LOCALAPPDATA%\KiCad\10.0\python-environments\org.kicad.ai_review`
+Manuell: Ordner `%USERPROFILE%\Documents\KiCad\10.0\plugins\org.kicad.ai-review`
+und das Python-Environment unter `%LOCALAPPDATA%\KiCad\10.0\python-environments\org.kicad.ai-review`
 löschen.
 
 ---

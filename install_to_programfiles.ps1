@@ -32,7 +32,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Source = Split-Path -Parent $MyInvocation.MyCommand.Path
-$PluginId = "org.kicad.ai_review"
+$PluginId = "org.kicad.ai-review"
 
 function Test-Admin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

@@ -18,7 +18,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PluginId = "org.kicad.ai_review"
+$PluginId = "org.kicad.ai-review"
 $Source = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $docs = [Environment]::GetFolderPath("MyDocuments")

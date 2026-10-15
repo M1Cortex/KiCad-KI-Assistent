@@ -156,7 +156,7 @@ def verify_package() -> None:
         checks = {
             "metadata.json an Root": "metadata.json" in names,
             "plugin.json im Pluginordner": any(
-                n.endswith("plugins/org.kicad.ai_review/plugin.json") for n in names
+                n.endswith("plugins/org.kicad.ai-review/plugin.json") for n in names
             ),
             "keine Tests im Paket": not any("/tests/" in n for n in names),
             "keine __pycache__": not any("__pycache__" in n for n in names),

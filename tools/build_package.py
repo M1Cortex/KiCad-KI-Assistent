@@ -22,21 +22,31 @@ import shutil
 import sys
 import zipfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from schema_validator import load_schema  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLUGIN_ID = "org.kicad.ai_review"
+PLUGIN_ID = "org.kicad.ai-review"
 DIST = os.path.join(ROOT, "dist")
 
 EXCLUDE_DIRS = {"__pycache__", ".git", ".pytest_cache", "dist", ".mypy_cache", ".ruff_cache"}
 EXCLUDE_FILES = {".pyc", ".pyo", ".DS_Store", "Thumbs.db"}
 # Dev-only content that must not ship inside the plugin folder.
-EXCLUDE_PLUGIN = {"tests", "tools", "package", ".gitignore"}
+EXCLUDE_PLUGIN = {"tests", "tools", "package"}
 
 
 def _iter_files(base: str, skip: set[str] | None = None):
+    """Yield every file below *base* that belongs in a release archive.
+
+    ``skip`` applies to directories; dotfiles and the EXCLUDE_FILES extensions
+    are always dropped because they are repository bookkeeping, not plugin code.
+    """
     skip = skip or set()
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS and d not in skip]
         for name in filenames:
+            if name.startswith("."):
+                continue
             if os.path.splitext(name)[1] in EXCLUDE_FILES:
                 continue
             yield os.path.join(dirpath, name)
@@ -62,7 +72,11 @@ def build_package(with_checksum: bool = True) -> str:
     if os.path.isdir(stage):
         shutil.rmtree(stage)
 
-    plugin_stage = os.path.join(stage, "plugins", PLUGIN_ID)
+    # KiCad extracts the *contents* of each top-level directory into
+    # <3rdparty>/<dir>/<sanitised_package_id>/. The plugin must therefore sit
+    # directly inside plugins/ - an extra level would end up nested inside the
+    # install directory and the IPC manifest would never be found.
+    plugin_stage = os.path.join(stage, "plugins")
     os.makedirs(plugin_stage, exist_ok=True)
     resources_stage = os.path.join(stage, "resources")
     os.makedirs(resources_stage, exist_ok=True)
@@ -147,35 +161,47 @@ def write_checksum_report(zip_path: str) -> None:
     print(f"  pruefsumme   : {report}")
 
 
+def _schema(name: str) -> dict:
+    path = os.path.join(ROOT, "tools", "schemas", name)
+    if not os.path.isfile(path):
+        raise SystemExit(
+            f"Schema nicht gefunden: {path}\n"
+            "Die offiziellen KiCad-Schemas liegen unter tools/schemas/."
+        )
+    return load_schema(path)
+
+
 def validate() -> int:
-    """Check the manifests and the archive layout against the published schemas."""
+    """Validate both manifests against KiCad's published JSON schemas.
+
+    Checking only for required fields is not enough: the schemas also constrain
+    identifiers with regular expressions (PCM forbids underscores) and restrict
+    enum values, so the full schema is applied here.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    from schema_validator import validate as schema_check  # noqa: E402
+
     errors: list[str] = []
 
-    # --- plugin.json against the KiCad API plugin schema -------------------
+    # --- plugin.json against the IPC plugin schema ------------------------
     plugin_json = os.path.join(ROOT, "plugin.json")
     try:
         with open(plugin_json, "r", encoding="utf-8") as handle:
             manifest = json.load(handle)
+        for err in schema_check(manifest, _schema("plugin.v1.schema.json")):
+            errors.append(f"plugin.json {err}")
     except Exception as exc:  # noqa: BLE001
         errors.append(f"plugin.json nicht lesbar: {exc}")
         manifest = {}
 
-    for field in ("identifier", "name", "description", "runtime", "actions"):
-        if field not in manifest:
-            errors.append(f"plugin.json: Pflichtfeld '{field}' fehlt")
-    if not manifest.get("identifier", "").endswith(PLUGIN_ID):
-        errors.append(f"plugin.json: identifier muss mit '{PLUGIN_ID}' uebereinstimmen")
+    if manifest.get("identifier") != PLUGIN_ID:
+        errors.append(
+            f"plugin.json: identifier '{manifest.get('identifier')}' != PLUGIN_ID '{PLUGIN_ID}'"
+        )
     for action in manifest.get("actions", []):
-        for field in ("identifier", "name", "description", "entrypoint"):
-            if field not in action:
-                errors.append(f"plugin.json: Action '{action.get('identifier')}' ohne '{field}'")
         entry = action.get("entrypoint", "")
         if entry and not os.path.isfile(os.path.join(ROOT, entry)):
             errors.append(f"plugin.json: entrypoint '{entry}' existiert nicht")
-        for scope in action.get("scopes", []):
-            if scope not in ("pcb", "schematic", "footprint", "symbol",
-                             "project_manager", "footprint_wizard"):
-                errors.append(f"plugin.json: ungueltiger scope '{scope}'")
         for icon_key in ("icons-light", "icons-dark"):
             for icon in action.get(icon_key, []):
                 if not os.path.isfile(os.path.join(ROOT, icon)):
@@ -186,33 +212,20 @@ def validate() -> int:
     try:
         with open(meta_path, "r", encoding="utf-8") as handle:
             meta = json.load(handle)
+        for err in schema_check(meta, _schema("pcm.v2.schema.json")):
+            errors.append(f"metadata.json {err}")
     except Exception as exc:  # noqa: BLE001
         errors.append(f"metadata.json nicht lesbar: {exc}")
         meta = {}
 
-    for field in ("name", "description", "description_full", "identifier",
-                  "type", "author", "license", "resources", "versions"):
-        if field not in meta:
-            errors.append(f"metadata.json: Pflichtfeld '{field}' fehlt")
-    if meta.get("$schema") != "https://go.kicad.org/pcm/schemas/v2":
-        errors.append("metadata.json: $schema muss PCM v2 sein (KiCad 10)")
     if meta.get("identifier") != PLUGIN_ID:
-        errors.append(f"metadata.json: identifier muss '{PLUGIN_ID}' sein")
+        errors.append(
+            f"metadata.json: identifier '{meta.get('identifier')}' != PLUGIN_ID '{PLUGIN_ID}'"
+        )
     if meta.get("type") != "plugin":
         errors.append("metadata.json: type muss 'plugin' sein")
-    for contact_key in ("author", "maintainer"):
-        contact = meta.get(contact_key, {})
-        if "name" not in contact or "contact" not in contact:
-            errors.append(f"metadata.json: {contact_key} braucht 'name' und 'contact'")
-    if not meta.get("versions"):
-        errors.append("metadata.json: mindestens eine Version erforderlich")
     for version in meta.get("versions", []):
-        for field in ("version", "status", "kicad_version"):
-            if field not in version:
-                errors.append(f"metadata.json: Version ohne '{field}'")
-        if version.get("status") not in ("stable", "testing", "development", "deprecated"):
-            errors.append(f"metadata.json: ungueltiger status '{version.get('status')}'")
-        if version.get("runtime") not in (None, "swig", "ipc"):
+        if version.get("runtime") != "ipc":
             errors.append("metadata.json: runtime muss 'ipc' sein fuer KiCad 10")
 
     # --- requirements.txt --------------------------------------------------
@@ -226,7 +239,7 @@ def validate() -> int:
         for error in errors:
             print(f"  - {error}")
         return 1
-    print("Manifeste und Layout sind gueltig.")
+    print("Manifeste und Layout sind gueltig (PCM v2 + IPC-Plugin v1).")
     return 0
 
 

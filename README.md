@@ -210,7 +210,7 @@ MCP-fähigen Client.
         "--project", "C:\\Pfad\\zu\\deinem\\Projekt"
       ],
       "env": {
-        "PYTHONPATH": "C:\\Users\\stani\\Documents\\KiCad\\10.0\\plugins\\org.kicad.ai_review",
+        "PYTHONPATH": "C:\\Users\\stani\\Documents\\KiCad\\10.0\\plugins\\org.kicad.ai-review",
         "KICAD_AI_BACKEND": "ollama",
         "KICAD_AI_MODEL": "qwen2.5-coder:14b"
       }
