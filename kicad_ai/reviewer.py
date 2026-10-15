@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -145,6 +146,51 @@ class SchematicReviewer:
         _tick(progress, f"{len(findings)} deterministische Befunde", 50)
         return findings, erc
 
+    def _ensure_model(self, config: LLMConfig) -> str:
+        """Fall back to a suitable installed model when the configured one is absent.
+
+        Machines change: a model gets renamed, updated or removed. Rather than
+        failing the whole review, pick the best match that is actually
+        installed and remember it.
+        """
+        client = _llm_module.build_client(config)
+        if not hasattr(client, "recommend"):
+            return ""
+
+        try:
+            if client.is_installed(config.model):
+                return ""
+            installed = client.models()
+        except Exception:  # noqa: BLE001 - connectivity problems are reported later
+            return ""
+
+        if not installed:
+            return ""
+
+        best = client.recommend()
+        if not best or best == config.model:
+            return ""
+
+        print(
+            f"[kicad-ai] Modell '{config.model}' fehlt, wechsle auf '{best}'",
+            file=sys.stderr,
+        )
+        previous = config.model
+        config.model = best
+
+        try:
+            from .config import AIConfig
+
+            stored = AIConfig.load()
+            stored.model = best
+            stored.backend = config.backend
+            stored.base_url = config.base_url
+            stored.save()
+            print(f"[kicad-ai] Einstellung gespeichert ({previous} -> {best})", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[kicad-ai] Speichern fehlgeschlagen: {exc}", file=sys.stderr)
+        return best
+
     # -- AI --------------------------------------------------------------- #
 
     def run_ai(
@@ -169,6 +215,8 @@ class SchematicReviewer:
         ok, detail = client.available()
         if not ok:
             return [], [], [], "", f"Backend nicht verfügbar: {detail}"
+
+        self._ensure_model(config)
 
         _tick(progress, f"Kontext wird erstellt ({config.backend}/{config.model})", 55)
         ctx = build_context(design, focus_refs=focus_refs)

@@ -341,6 +341,60 @@ class TestReport(unittest.TestCase):
         self.assertIn("statistics", payload)
 
 
+class TestModelSelection(unittest.TestCase):
+    """The review must work even when the configured model is gone."""
+
+    def _client(self, installed):
+        client = OllamaClient(LLMConfig(backend="ollama", model="x"))
+        client.models = lambda: list(installed)
+        client.is_installed = lambda name: name in installed
+        return client
+
+    def test_prefers_coder_models(self):
+        client = self._client(["llama3.1:8b", "qwen2.5-coder:7b", "mistral:7b"])
+        self.assertIn("qwen2.5-coder", client.recommend())
+
+    def test_ignores_repository_prefix(self):
+        client = self._client(["VladimirGav/gemma4-26b:latest", "qwen2.5-coder:7b"])
+        self.assertIn("qwen2.5-coder", client.recommend())
+
+    def test_falls_back_to_only_model(self):
+        client = self._client(["irgendwas:1b"])
+        self.assertEqual(client.recommend(), "irgendwas:1b")
+
+    def test_returns_none_without_models(self):
+        self.assertIsNone(self._client([]).recommend())
+
+    def test_auto_repair_switches_and_saves(self):
+        from kicad_ai.reviewer import SchematicReviewer
+
+        installed = ["qwen2.5-coder:7b"]
+        reviewer = SchematicReviewer(llm_config=LLMConfig(backend="ollama", model="weg:1b"))
+        original_build = sys.modules["kicad_ai.llm"].build_client
+        try:
+            sys.modules["kicad_ai.llm"].build_client = lambda config: self._client(installed)
+            config = LLMConfig(backend="ollama", model="weg:1b")
+            result = SchematicReviewer._ensure_model(reviewer, config)
+            self.assertEqual(result, "qwen2.5-coder:7b")
+            self.assertEqual(config.model, "qwen2.5-coder:7b")
+        finally:
+            sys.modules["kicad_ai.llm"].build_client = original_build
+
+    def test_auto_repair_keeps_existing_model(self):
+        from kicad_ai.reviewer import SchematicReviewer
+
+        reviewer = SchematicReviewer(llm_config=LLMConfig(backend="ollama"))
+        original = sys.modules["kicad_ai.llm"].build_client
+        try:
+            sys.modules["kicad_ai.llm"].build_client = (
+                lambda config: self._client(["qwen2.5-coder:7b"])
+            )
+            config = LLMConfig(backend="ollama", model="qwen2.5-coder:7b")
+            self.assertEqual(SchematicReviewer._ensure_model(reviewer, config), "")
+        finally:
+            sys.modules["kicad_ai.llm"].build_client = original
+
+
 class TestLLMClients(unittest.TestCase):
     def test_ollama_url_from_env(self):
         config = LLMConfig.from_env()

@@ -189,13 +189,44 @@ class _BaseClient:
 
 
 class OllamaClient(_BaseClient):
-    """Local inference via Ollama."""
+    """Local inference via Ollama.
+
+    Beyond plain chatting this exposes the introspection the review needs:
+    which models exist, how large their context window is, whether they can
+    emit structured JSON, and which one suits the installed hardware best.
+    """
 
     backend = "ollama"
+
+    #: Preference order when several models could serve. Coding models handle
+    #: schematic review better than general chat models because the task is
+    #: largely about reading structured data and naming parts.
+    MODEL_PREFERENCE = (
+        "qwen2.5-coder",
+        "qwen3-coder",
+        "codestral",
+        "deepseek-coder",
+        "starcoder2",
+        "qwen2.5",
+        "qwen3",
+        "llama3.1",
+        "llama3.2",
+        "mistral",
+        "gemma3",
+        "phi4",
+    )
 
     @property
     def api(self) -> str:
         return self.config.base_url or "http://localhost:11434"
+
+    # -- health ------------------------------------------------------------ #
+
+    def version(self) -> str:
+        try:
+            return str(self.session.get(f"{self.api}/api/version", timeout=5).json().get("version", "?"))
+        except Exception:  # noqa: BLE001
+            return "?"
 
     def available(self) -> tuple[bool, str]:
         try:
@@ -204,21 +235,110 @@ class OllamaClient(_BaseClient):
                 return False, f"HTTP {resp.status_code}"
             models = [m.get("name", "") for m in resp.json().get("models", [])]
             if not models:
-                return False, "Ollama läuft, hat aber keine Modelle installiert"
-            return True, f"Ollama erreichbar, {len(models)} Modell(e)"
+                return False, (
+                    "Ollama läuft, hat aber keine Modelle installiert. "
+                    "Lade eines herunter:  ollama pull qwen2.5-coder:7b"
+                )
+            return True, f"Ollama {self.version()}, {len(models)} Modell(e)"
         except Exception as exc:  # noqa: BLE001 - report any connectivity problem
-            return False, f"Ollama nicht erreichbar ({type(exc).__name__})"
+            return False, f"Ollama nicht erreichbar ({type(exc).__name__}) auf {self.api}"
 
     def models(self) -> list[str]:
         resp = self.session.get(f"{self.api}/api/tags", timeout=10)
         resp.raise_for_status()
         return [m.get("name", "") for m in resp.json().get("models", [])]
 
-    def chat(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
+    def model_details(self, name: str) -> dict:
+        """Return size, family and quantisation of one model."""
+        for entry in self.session.get(f"{self.api}/api/tags", timeout=10).json().get("models", []):
+            if entry.get("name") == name or entry.get("model") == name:
+                details = entry.get("details", {})
+                return {
+                    "name": name,
+                    "size_bytes": entry.get("size", 0),
+                    "family": details.get("family", ""),
+                    "parameter_size": details.get("parameter_size", ""),
+                    "quantization": details.get("quantization_level", ""),
+                }
+        return {"name": name}
+
+    def show(self, name: str | None = None) -> dict:
+        """Ask Ollama about a model: context window, capabilities, template."""
+        model = name or self.config.model
+        resp = self.session.post(
+            f"{self.api}/api/show",
+            json={"model": model},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        model_info = data.get("model_info", {}) or {}
+        context = 0
+        for key, value in model_info.items():
+            if key.endswith(".context_length"):
+                context = int(value)
+                break
+        capabilities = data.get("capabilities", []) or []
+        return {
+            "model": model,
+            "context_length": context,
+            "capabilities": capabilities,
+            "parameter_size": data.get("details", {}).get("parameter_size", ""),
+            "quantization": data.get("details", {}).get("quantization_level", ""),
+        }
+
+    def is_installed(self, name: str) -> bool:
+        return name in self.models()
+
+    # -- selection --------------------------------------------------------- #
+
+    def recommend(self) -> str | None:
+        """Pick the most suitable installed model, or None when none exists.
+
+        Any of the known good model families beats an unknown one, and among
+        equals the preference order decides. This keeps the plugin usable on a
+        fresh machine without the user first having to read a model list.
+        """
+        installed = self.models()
+        if not installed:
+            return None
+
+        def rank(name: str) -> tuple:
+            lowered = name.lower()
+            for index, family in enumerate(self.MODEL_PREFERENCE):
+                if family in lowered:
+                    return (index, len(name))
+            return (len(self.MODEL_PREFERENCE), len(name))
+
+        return sorted(installed, key=rank)[0]
+
+    def context_limit(self) -> int:
+        """Usable context window of the configured model, in tokens."""
+        try:
+            info = self.show()
+        except Exception:  # noqa: BLE001
+            return 4096
+        return int(info.get("context_length") or 4096)
+
+    # -- inference --------------------------------------------------------- #
+
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        progress: Any = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """Send a chat request, streaming when possible.
+
+        Streaming keeps long answers from looking like a hang: without it a
+        big schematic context plus a slow local model can exceed any sensible
+        client timeout.
+        """
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
-            "stream": False,
+            "stream": True,
             "format": kwargs.get("format", "json"),
             "options": {
                 "temperature": self.config.temperature,
@@ -226,16 +346,65 @@ class OllamaClient(_BaseClient):
                 "num_predict": self.config.max_tokens,
             },
         }
-        data = self._post_json(f"{self.api}/api/chat", payload)
-        text = (data.get("message") or {}).get("content", "")
-        return LLMResponse(
-            text=text,
-            model=data.get("model", self.config.model),
-            backend=self.backend,
-            prompt_tokens=data.get("prompt_eval_count", 0),
-            completion_tokens=data.get("eval_count", 0),
-        )
 
+        chunks: list[str] = []
+        prompt_tokens = completion_tokens = 0
+        model_name = self.config.model
+        last_error: Exception | None = None
+
+        for attempt in range(2):
+            chunks.clear()
+            prompt_tokens = completion_tokens = 0
+            try:
+                resp = self.session.post(
+                    f"{self.api}/api/chat",
+                    json=payload,
+                    timeout=self.config.timeout,
+                    stream=True,
+                )
+                if resp.status_code >= 400:
+                    raise LLMError(self._explain_error(resp))
+
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("error"):
+                        raise LLMError(str(event["error"]))
+                    piece = (event.get("message") or {}).get("content", "")
+                    if piece:
+                        chunks.append(piece)
+                        if progress is not None:
+                            progress(len(piece), "".join(chunks))
+                    model_name = event.get("model", model_name)
+                    prompt_tokens = event.get("prompt_eval_count", prompt_tokens)
+                    completion_tokens = event.get("eval_count", completion_tokens)
+                    if event.get("done"):
+                        break
+                break
+            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError) as exc:
+                # A partial stream is common when a large model swaps memory;
+                # one retry usually completes the answer.
+                last_error = exc
+                if attempt == 1 or not chunks:
+                    raise LLMError(
+                        f"Verbindung zu Ollama unterbrochen: {exc}"
+                    ) from exc
+            except LLMError:
+                raise
+        else:  # pragma: no cover - defensive
+            raise LLMError(str(last_error) if last_error else "Unbekannter Ollama-Fehler")
+
+        return LLMResponse(
+            text="".join(chunks),
+            model=model_name,
+            backend=self.backend,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
 
 class OpenAIClient(_BaseClient):
     """Any endpoint speaking the OpenAI ``/chat/completions`` API.
