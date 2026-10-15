@@ -479,13 +479,21 @@ class ReviewDialog(wx.Dialog):
             )
         )
         dlg = wx.TextEntryDialog(self, "MCP-Client-Konfiguration kopieren:", "MCP", config)
-        if dlg.ShowModal() == wx.ID_OK:
-            if dlg.GetValue():
-                if wx.TheClipboard.Open():
-                    wx.TheClipboard.SetData(dlg.GetValue())
-                    wx.TheClipboard.Close()
-                    self.status.ChangeValue("Konfiguration in die Zwischenablage kopiert")
-        dlg.Destroy()
+        try:
+            if dlg.ShowModal() == wx.ID_OK:
+                text = dlg.GetValue()
+                if text and wx.TheClipboard.Open():
+                    try:
+                        # wxPython >= 3 needs the data wrapped in an object
+                        # supporting the right format; a plain str raises
+                        # TypeError: unexpected type 'str'.
+                        data = wx.TextDataObject(text)
+                        wx.TheClipboard.SetData(data)
+                        self.status.ChangeValue("Konfiguration in die Zwischenablage kopiert")
+                    finally:
+                        wx.TheClipboard.Close()
+        finally:
+            dlg.Destroy()
 
     # -- close ------------------------------------------------------------ #
 
@@ -495,25 +503,37 @@ class ReviewDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 
+#: Strong reference to the wx.App.
+#:
+#: ``wx.App(...)`` returns an object that owns the platform event loop. If the
+#: only reference is a temporary, CPython collects it right away, the app is
+#: shut down, and any later window creation raises
+#: ``PyNoAppError: The wx.App object must be created first!``. KiCad runs
+#: actions in a throwaway interpreter, so there is no other owner to keep it
+#: alive.
+_APP_REF: wx.App | None = None
+
+
 def run(project_path: str, parent: wx.Window | None = None) -> int:
     """Show the review dialog for *project_path*.
 
-    KiCad launches actions in a bare interpreter, so no ``wx.App`` exists yet.
-    wx refuses to create any window without one, which would abort the action
-    before the dialog appears.
+    KiCad launches actions in a bare interpreter, so no ``wx.App`` exists yet
+    and wx refuses to create any window without one.
+
+    The app object is intentionally not destroyed afterwards: tearing it down
+    while windows are still registered produces
+    ``'UnregisterClass' failed ... class still has open windows`` and can take
+    down the hosting KiCad editor. The interpreter exits right after anyway.
     """
-    app = wx.GetApp()
-    owns_app = False
-    if app is None:
+    global _APP_REF
+
+    if wx.GetApp() is None:
         # False: keep stdout/stderr intact so KiCad can report diagnostics.
-        app = wx.App(False)
-        owns_app = True
+        _APP_REF = wx.App(False)
 
     dialog = ReviewDialog(project_path, parent)
     try:
         dialog.ShowModal()
     finally:
         dialog.Destroy()
-        if owns_app:
-            app.Destroy()
     return wx.ID_OK

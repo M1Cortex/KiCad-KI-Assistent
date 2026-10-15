@@ -18,6 +18,54 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+
+def _extend_path_with_plugin_environment() -> None:
+    """Make the plugin's virtualenv importable.
+
+    KiCad launches actions with the interpreter named in
+    ``api.interpreter_path`` - normally KiCad's own ``bin/pythonw.exe`` - and
+    that interpreter has neither ``kipy`` nor anything else from
+    requirements.txt. The per-plugin virtualenv KiCad builds for dependencies
+    lives elsewhere, so its ``site-packages`` has to be added explicitly.
+    Without this the action cannot talk to the IPC API and never finds the
+    open project.
+    """
+    if sys.prefix != sys.base_prefix:
+        return  # already running inside a virtualenv
+
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+    candidates = [
+        os.path.join(base, "KiCad", "10.0", "python-environments"),
+    ]
+    env_override = os.environ.get("KICAD_PLUGIN_ENVIRONMENTS")
+    if env_override:
+        candidates.insert(0, env_override)
+
+    identifier = os.path.basename(_HERE)
+    for root in candidates:
+        venv = os.path.join(root, identifier)
+        for site_dir in _site_packages(venv):
+            if os.path.isdir(site_dir) and site_dir not in sys.path:
+                sys.path.insert(0, site_dir)
+
+
+def _site_packages(venv: str) -> list[str]:
+    """Return the site-packages directories of a virtualenv (any layout)."""
+    found: list[str] = []
+    lib = os.path.join(venv, "Lib", "site-packages")
+    if os.path.isdir(lib):
+        found.append(lib)
+    lib64 = os.path.join(venv, "lib")
+    if os.path.isdir(lib64):
+        for entry in os.listdir(lib64):
+            candidate = os.path.join(lib64, entry, "site-packages")
+            if os.path.isdir(candidate):
+                found.append(candidate)
+    return found
+
+
+_extend_path_with_plugin_environment()
+
 from kicad_ai.ui import run  # noqa: E402
 
 
@@ -186,20 +234,15 @@ def _report(message: str, detail: str = "") -> None:
     except ImportError:
         return
 
-    app = wx.GetApp()
-    owns_app = False
-    if app is None:
+    if wx.GetApp() is None:
+        # Keep a reference: a temporary would be garbage collected and every
+        # subsequent window creation would fail with PyNoAppError.
         app = wx.App(False)
-        owns_app = True
-    try:
-        wx.MessageBox(
-            f"{message}\n\n{detail}" if detail else message,
-            "KiCad KI-Assistent",
-            wx.OK | wx.ICON_INFORMATION,
-        )
-    finally:
-        if owns_app:
-            app.Destroy()
+    wx.MessageBox(
+        f"{message}\n\n{detail}" if detail else message,
+        "KiCad KI-Assistent",
+        wx.OK | wx.ICON_INFORMATION,
+    )
 
 
 def main() -> int:
