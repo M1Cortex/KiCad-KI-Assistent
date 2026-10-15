@@ -44,7 +44,30 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
+        """Resolve settings from env vars, then the config file, then defaults.
+
+        KiCad launches plugin actions as separate processes, so environment
+        variables set in the user's shell do not reach the plugin. The config
+        file is therefore the primary mechanism for interactive use.
+        """
         cfg = cls()
+
+        try:
+            from .config import AIConfig
+
+            stored = AIConfig.load()
+        except Exception:  # noqa: BLE001 - config is optional
+            stored = None
+
+        if stored is not None:
+            cfg.backend = stored.backend or cfg.backend
+            cfg.model = stored.model or cfg.model
+            cfg.base_url = stored.base_url or cfg.base_url
+            cfg.api_key = stored.api_key or cfg.api_key
+            cfg.temperature = stored.temperature
+            cfg.max_tokens = stored.max_tokens
+            cfg.timeout = stored.timeout
+
         cfg.backend = os.environ.get("KICAD_AI_BACKEND", cfg.backend).lower()
         if cfg.backend == "ollama":
             cfg.model = os.environ.get("KICAD_AI_MODEL", cfg.model)
@@ -53,8 +76,8 @@ class LLMConfig:
                 cfg.base_url = f"http://{cfg.base_url}"
             cfg.base_url = cfg.base_url.rstrip("/")
         else:
-            cfg.model = os.environ.get("KICAD_AI_MODEL", "gpt-4o-mini")
-            cfg.base_url = os.environ.get("KICAD_AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+            cfg.model = os.environ.get("KICAD_AI_MODEL", cfg.model)
+            cfg.base_url = os.environ.get("KICAD_AI_BASE_URL", cfg.base_url).rstrip("/")
             for var in ("OPENAI_API_KEY", "KICAD_AI_API_KEY"):
                 if os.environ.get(var):
                     cfg.api_key = os.environ[var]
@@ -114,11 +137,55 @@ class _BaseClient:
         except requests.exceptions.Timeout as exc:
             raise LLMError(f"Zeitüberschreitung bei {url}") from exc
         if resp.status_code >= 400:
-            raise LLMError(f"HTTP {resp.status_code} von {url}: {resp.text[:400]}")
+            raise LLMError(self._explain_error(resp))
         try:
             return resp.json()
         except json.JSONDecodeError as exc:
             raise LLMError(f"Ungültige Antwort von {url}: {resp.text[:200]}") from exc
+
+    def _explain_error(self, resp) -> str:
+        """Turn an HTTP error into an actionable message.
+
+        A missing model is the most common cause and is easy to fix, so the
+        available models are listed instead of showing the raw API error.
+        """
+        status = resp.status_code
+        body = (resp.text or "")[:400]
+        model = ""
+        try:
+            model = resp.request.json().get("model", "")
+        except Exception:  # noqa: BLE001
+            pass
+
+        if status == 404 and "not found" in body.lower():
+            lines = [f"Das Modell '{model}' ist auf dem Server nicht vorhanden."]
+            available: list[str] = []
+            try:
+                available = self.models()
+            except Exception:  # noqa: BLE001
+                pass
+            if available:
+                lines.append("Verfügbar sind:")
+                lines.extend(f"  - {name}" for name in available)
+                lines.append("")
+                lines.append(
+                    "Modell umstellen mit:  python -m kicad_ai set-model <name>"
+                )
+            else:
+                lines.append(f"Keine Modelle gefunden. Installiere eines mit:  ollama pull {model or 'qwen2.5-coder:14b'}")
+            return "\n".join(lines)
+
+        if status in (401, 403):
+            return (
+                f"Zugriff verweigert (HTTP {status}). Der API-Schlüssel fehlt "
+                "oder ist ungültig."
+            )
+        if status == 400 and "context" in body.lower():
+            return (
+                "Der Kontext ist zu groß für das Modell. Verkleinere ihn mit "
+                "--min-severity oder verwende ein Modell mit größerem Kontextfenster."
+            )
+        return f"HTTP {status} von {self.api}: {body}"
 
 
 class OllamaClient(_BaseClient):

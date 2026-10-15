@@ -215,7 +215,22 @@ def main() -> int:
         return 1
 
     print(f"[kicad-ai] Projekt: {project}", file=sys.stderr)
-    run(project)
+    try:
+        run(project)
+    except Exception:
+        # KiCad routes plugin stdout/stderr to the warning area of the status
+        # bar. Without the traceback a failure is indistinguishable from a no-op.
+        import traceback
+
+        traceback.print_exc()
+        _report(
+            "Das Review-Fenster konnte nicht geöffnet werden.",
+            "Die technische Meldung steht in der Statusleiste unten rechts "
+            "im Editor. Häufigste Ursache: fehlende Python-Umgebung.\n\n"
+            "Abhilfe: Plugin-Einstellungen → Aktion rechtsklicken → "
+            "'Plugin-Umgebung neu erstellen'",
+        )
+        return 1
     return 0
 
 

@@ -54,6 +54,19 @@ def _build_parser() -> argparse.ArgumentParser:
     status.add_argument("--base-url")
     status.add_argument("--list-models", action="store_true")
 
+    setmodel = sub.add_parser("set-model", help="Modell dauerhaft umstellen")
+    setmodel.add_argument("model", help="Modellname, z. B. francofeliu/qwen2.5-coder14b:latest")
+    setmodel.add_argument("--backend", choices=["ollama", "openai"], default="ollama")
+    setmodel.add_argument("--base-url", help="Endpunkt des Servers")
+    setmodel.add_argument("--api-key", help="API-Schlüssel (nur für openai)")
+
+    setopt = sub.add_parser("set-option", help="Einstellung dauerhaft ändern")
+    setopt.add_argument("key", choices=["backend", "model", "base_url", "api_key",
+                                        "temperature", "max_tokens", "timeout"])
+    setopt.add_argument("value")
+
+    showcfg = sub.add_parser("show-config", help="Gespeicherte Einstellungen anzeigen")
+
     mcp = sub.add_parser("mcp", help="MCP-Server auf stdio starten")
     mcp.add_argument("--project", help="Standardprojekt")
 
@@ -157,6 +170,59 @@ def _cmd_check_llm(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _cmd_set_model(args: argparse.Namespace) -> int:
+    from .config import AIConfig
+
+    cfg = AIConfig.load()
+    cfg.backend = args.backend
+    cfg.model = args.model
+    if args.base_url:
+        cfg.base_url = args.base_url.rstrip("/")
+    if args.api_key:
+        cfg.api_key = args.api_key
+    path = cfg.save()
+
+    print(f"Modell     : {cfg.model}")
+    print(f"Backend    : {cfg.backend}")
+    print(f"Gespeichert: {path}")
+    print()
+    print("Die Einstellung gilt sofort fuer KiCad - kein Neustart noetig.")
+
+    ok, detail = build_client(cfg.to_llm_config()).available()
+    print(f"Status     : {'OK' if ok else 'NICHT ERREICHBAR'} - {detail}")
+    return 0 if ok else 1
+
+
+def _cmd_set_option(args: argparse.Namespace) -> int:
+    from .config import AIConfig
+
+    cfg = AIConfig.load()
+    value: object = args.value
+    if args.key in ("temperature",):
+        value = float(args.value)
+    elif args.key in ("max_tokens", "timeout"):
+        value = int(args.value)
+    setattr(cfg, args.key, value)
+    path = cfg.save()
+    print(f"{args.key} = {getattr(cfg, args.key)!r}")
+    print(f"Gespeichert: {path}")
+    return 0
+
+
+def _cmd_show_config(args: argparse.Namespace) -> int:
+    from .config import config_path
+    from .config import AIConfig
+
+    cfg = AIConfig.load()
+    print(f"Konfigurationsdatei: {config_path()}")
+    print(f"  vorhanden          : {config_path().is_file()}")
+    print()
+    for key, value in vars(cfg).items():
+        shown = "***" if key == "api_key" and value else value
+        print(f"  {key:<16} = {shown}")
+    return 0
+
+
 def _cmd_mcp(args: argparse.Namespace) -> int:
     from .mcp_server import main as mcp_main
 
@@ -185,6 +251,9 @@ def main(argv: list[str] | None = None) -> int:
     handlers: dict[str, Any] = {
         "review": _cmd_review,
         "check-llm": _cmd_check_llm,
+        "set-model": _cmd_set_model,
+        "set-option": _cmd_set_option,
+        "show-config": _cmd_show_config,
         "mcp": _cmd_mcp,
         "list-tools": _cmd_list_tools,
         "list-rules": _cmd_list_rules,

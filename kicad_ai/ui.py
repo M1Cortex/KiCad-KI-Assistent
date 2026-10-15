@@ -496,10 +496,24 @@ class ReviewDialog(wx.Dialog):
 
 
 def run(project_path: str, parent: wx.Window | None = None) -> int:
-    """Show the review dialog for *project_path*. Returns the modal result."""
+    """Show the review dialog for *project_path*.
+
+    KiCad launches actions in a bare interpreter, so no ``wx.App`` exists yet.
+    wx refuses to create any window without one, which would abort the action
+    before the dialog appears.
+    """
+    app = wx.GetApp()
+    owns_app = False
+    if app is None:
+        # False: keep stdout/stderr intact so KiCad can report diagnostics.
+        app = wx.App(False)
+        owns_app = True
+
     dialog = ReviewDialog(project_path, parent)
     try:
         dialog.ShowModal()
     finally:
         dialog.Destroy()
+        if owns_app:
+            app.Destroy()
     return wx.ID_OK
