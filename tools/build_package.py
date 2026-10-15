@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -58,6 +59,34 @@ def build_version() -> str:
         return json.load(handle)["versions"][0]["version"]
 
 
+def _clean_stage(stage: str) -> None:
+    """Remove the staging directory, tolerating files still held open.
+
+    On Windows a leftover process (a killed preview window, an editor indexer)
+    can keep a handle on the directory and make ``rmtree`` fail. Retrying after
+    a short pause is enough in practice; as a last resort the directory is
+    moved aside and rebuilt, which keeps the build going.
+    """
+    if not os.path.isdir(stage):
+        return
+
+    for attempt in range(3):
+        try:
+            shutil.rmtree(stage)
+            return
+        except (PermissionError, OSError) as exc:
+            if attempt == 2:
+                leftover = f"{stage}.old-{os.getpid()}"
+                try:
+                    os.replace(stage, leftover)
+                    print(f"  hinweis   : alter Staging-Ordner umbenannt nach {os.path.basename(leftover)}")
+                    print(f"             Ursache: {exc}")
+                except OSError:
+                    raise
+                return
+            time.sleep(0.6)
+
+
 def build_package(with_checksum: bool = True) -> str:
     """Assemble the PCM zip.
 
@@ -69,8 +98,7 @@ def build_package(with_checksum: bool = True) -> str:
     """
     version = build_version()
     stage = os.path.join(DIST, "stage")
-    if os.path.isdir(stage):
-        shutil.rmtree(stage)
+    _clean_stage(stage)
 
     # KiCad extracts the *contents* of each top-level directory into
     # <3rdparty>/<dir>/<sanitised_package_id>/. The plugin must therefore sit
