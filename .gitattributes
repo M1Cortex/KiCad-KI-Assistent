@@ -1,0 +1,13 @@
+# Textdateien mit Unix-Zeilenenden im Repository halten.
+# Verhindert CRLF-Warnungen und damit Probleme bei Shell-Skripten.
+* text=auto eol=lf
+
+*.py   text eol=lf
+*.ps1  text eol=crlf
+*.md   text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+*.yml  text eol=lf
+
+*.png  binary
+*.zip  binary

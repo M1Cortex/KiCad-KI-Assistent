@@ -1,0 +1,32 @@
+{
+    "$schema": "https://go.kicad.org/api/schemas/v1",
+    "identifier": "org.kicad.ai_review",
+    "name": "AI Schaltplan-Review",
+    "description": "KI-gestütztes Schaltplan-Review: deterministische Prüfregeln, ERC-Analyse, Anforderungsableitung via Ollama oder API, plus MCP-Server für externe KI-Agenten.",
+    "runtime": {
+        "type": "python",
+        "min_version": "3.9"
+    },
+    "actions": [
+        {
+            "identifier": "review-schematic",
+            "name": "Schaltplan reviewen",
+            "description": "Öffnet das Review-Fenster für das aktuelle Projekt: Fehler, Warnungen, Anforderungen und KI-Analyse.",
+            "show-button": true,
+            "scopes": [
+                "pcb",
+                "schematic",
+                "project_manager"
+            ],
+            "entrypoint": "review_action.py",
+            "icons-light": [
+                "icons/review_light_24.png",
+                "icons/review_light_48.png"
+            ],
+            "icons-dark": [
+                "icons/review_dark_24.png",
+                "icons/review_dark_48.png"
+            ]
+        }
+    ]
+}

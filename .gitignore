@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build output
+dist/
+*.zip
+
+# KiCad
+*.bak
+*.bak-*
+*.lck
+*-bak/
+_autosave-*/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*~

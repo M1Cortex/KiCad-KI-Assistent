@@ -1,0 +1,6 @@
+# KiCad AI Review - Abhängigkeiten
+#
+# Bewusst minimal: alles Nötige bringt KiCads eigenes Python bereits mit
+# (requests, wxPython, Pillow). Deshalb ist 'requests' die einzige harte
+# Abhängigkeit, damit der MCP-/HTTP-Client auch ausserhalb von KiCad läuft.
+requests>=2.31.0

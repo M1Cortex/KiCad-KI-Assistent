@@ -1,0 +1,53 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2",
+  "name": "AI Schaltplan-Review",
+  "description": "KI-gestÃ¼tztes Schaltplan-Review fÃ¼r KiCad mit MCP-Server",
+  "description_full": "KI-gestÃ¼tztes Review fÃ¼r KiCad-SchaltplÃ¤ne.\n\nFunktionen:\nâ€¢ Deterministische PrÃ¼fregeln (40+) fÃ¼r Netze, Versorgung, Pins, StÃ¼ckliste, Annotation und Hierarchie\nâ€¢ Integration der offiziellen KiCad-ERC-Ergebnisse als JSON\nâ€¢ Abgleich der Verbindungstopologie: NetzauflÃ¶sung, Connectivity-Tracing zwischen Bauteilen\nâ€¢ Anforderungsableitung aus dem Schaltplan mit ErfÃ¼llungsstatus\nâ€¢ KI-Antwort Ã¼ber Ollama (lokal) oder jede OpenAI-kompatible API\nâ€¢ MCP-Server mit 11 Werkzeugen fÃ¼r externe KI-Agenten (Claude Desktop, Cursor, VS Code)\nâ€¢ Reports als Text, Markdown, HTML und JSON, Exit-Code-Gating fÃ¼r CI\n\nUnterstÃ¼tzt KiCad 10 (IPC-Plugin im PCB-Editor); die Schaltplan-Actions werden automatisch in KiCad 11 aktiv, wo die IPC-API den Schaltplan-Editor abdeckt.",
+  "identifier": "org.kicad.ai_review",
+  "type": "plugin",
+  "category": "plugin",
+  "author": {
+    "name": "KiCad AI Review Contributors",
+    "contact": {
+      "web": "https://github.com/M1Cortex/KiCad-KI-Assistent",
+      "source": "https://github.com/M1Cortex/KiCad-KI-Assistent"
+    }
+  },
+  "maintainer": {
+    "name": "KiCad AI Review Contributors",
+    "contact": {
+      "web": "https://github.com/M1Cortex/KiCad-KI-Assistent"
+    }
+  },
+  "license": "MIT",
+  "tags": [
+    "schematic",
+    "review",
+    "erc",
+    "ai",
+    "ollama",
+    "llm",
+    "mcp",
+    "requirements"
+  ],
+  "resources": {
+    "homepage": "https://github.com/M1Cortex/KiCad-KI-Assistent",
+    "source": "https://github.com/M1Cortex/KiCad-KI-Assistent",
+    "issues": "https://github.com/M1Cortex/KiCad-KI-Assistent/issues",
+    "documentation": "https://github.com/M1Cortex/KiCad-KI-Assistent#readme"
+  },
+  "versions": [
+    {
+      "version": "0.1.0",
+      "status": "testing",
+      "kicad_version": "10.0",
+      "platforms": [
+        "windows",
+        "macos",
+        "linux"
+      ],
+      "runtime": "ipc",
+      "download_url": "https://github.com/M1Cortex/KiCad-KI-Assistent/releases/download/v0.1.0/kicad-ai-review-0.1.0.zip"
+    }
+  ]
+}
