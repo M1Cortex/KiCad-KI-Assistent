@@ -632,20 +632,30 @@ def project_dir(path: str) -> str:
 _APP_REF: wx.App | None = None
 
 
-def run(project_path: str, parent: wx.Window | None = None) -> int:
-    """Show the review dialog.
+def ensure_app() -> wx.App:
+    """Return the wx application, creating it on first use.
 
     KiCad launches actions in a bare interpreter, so no ``wx.App`` exists yet.
-    The app object is kept in a module global: a temporary would be garbage
+    The instance is kept in a module global: a temporary would be garbage
     collected immediately and every later window creation would raise
     ``PyNoAppError``.
     """
     global _APP_REF
-    if wx.GetApp() is None:
-        _APP_REF = wx.App(False)
+    app = wx.GetApp()
+    if app is None:
+        # False keeps stdout/stderr intact so KiCad can report diagnostics.
+        app = wx.App(False)
+        _APP_REF = app
+    return app
+
+
+def run(project_path: str, parent: wx.Window | None = None) -> int:
+    """Show the review dialog for *project_path*."""
+    ensure_app()
 
     dialog = ReviewDialog(project_path, parent)
     try:
+        dialog.Centre(wx.BOTH)
         dialog.ShowModal()
     finally:
         dialog.Destroy()

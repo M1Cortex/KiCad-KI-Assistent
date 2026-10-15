@@ -245,16 +245,50 @@ def _report(message: str, detail: str = "") -> None:
     )
 
 
+def _ask_for_project() -> str | None:
+    """Let the user pick a project when IPC detection yields nothing.
+
+    Depending on the IPC server state KiCad may report no open document even
+    though a project is open. Rather than failing, offer a file dialog so the
+    review is still usable.
+    """
+    try:
+        import wx
+    except ImportError:
+        return None
+
+    from kicad_ai.ui import ensure_app
+
+    app = ensure_app()
+
+    wildcard = "KiCad-Projekt (*.kicad_pro)|*.kicad_pro"
+    start = ""
+    home = os.environ.get("USERPROFILE")
+    if home:
+        candidate = os.path.join(home, "Documents", "KiCad", "Projekte")
+        if os.path.isdir(candidate):
+            start = candidate
+
+    with wx.FileDialog(
+        None,
+        "KiCad-Projekt für das Review wählen",
+        defaultDir=start,
+        wildcard=wildcard,
+        style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+    ) as dlg:
+        if dlg.ShowModal() == wx.ID_OK:
+            return dlg.GetPath()
+    _ = app
+    return None
+
+
 def main() -> int:
     project = _resolve()
     if not project:
-        _report(
-            "Es wurde kein KiCad-Projekt gefunden.",
-            "Öffne zuerst ein Projekt (.kicad_pro) im Projektmanager oder im "
-            "PCB-Editor und klicke dann erneut auf die Aktion.\n\n"
-            "Alternativ kannst du ein Projekt auswählen:\n"
-            "Plugin → Aktion rechtsklicken → Argumente",
-        )
+        print("[kicad-ai] Kein Projekt über IPC gefunden - frage den Nutzer.", file=sys.stderr)
+        project = _ask_for_project()
+    if not project:
+        print("[kicad-ai] abgebrochen: kein Projekt gewählt", file=sys.stderr)
         return 1
 
     print(f"[kicad-ai] Projekt: {project}", file=sys.stderr)
