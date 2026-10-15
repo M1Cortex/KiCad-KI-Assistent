@@ -518,6 +518,13 @@ def _pin_output_unused(ctx: RuleContext) -> list[Finding]:
 
 _GENERIC_VALUES = {"", "?", "XX", "XXX", "TBD", "TODO", "DUMMY", "N/A", "NA", "-", "VALUE", "VAL"}
 
+#: Values that merely repeat the reference prefix ("R" on R1, "C" on C1).
+#: The BOM would then say "R" instead of "10k", so the order is unbuildable.
+_PREFIX_PLACEHOLDERS = {
+    "R", "RN", "RV", "C", "CP", "L", "D", "LED", "Q", "M", "U", "IC", "X", "Y",
+    "S", "SW", "T", "TP", "J", "P", "K", "B", "F", "FB", "RT", "FUSE",
+}
+
 
 def _bom_no_footprint(ctx: RuleContext) -> list[Finding]:
     out = []
@@ -559,23 +566,57 @@ def _bom_no_datasheet(ctx: RuleContext) -> list[Finding]:
     return out
 
 
+def _value_example(prefix: str) -> str:
+    """Suggest a plausible value for the given reference prefix."""
+    upper = prefix.upper()
+    if upper.startswith(("R", "RN", "RT")):
+        return "R1 = 10k"
+    if upper.startswith(("C", "CP")):
+        return "C1 = 100nF"
+    if upper.startswith("L"):
+        return "L1 = 10uH"
+    if upper.startswith(("D", "LED")):
+        return "D1 = 1N4148"
+    if upper.startswith("J") or upper.startswith("P"):
+        return "J1 = Conn_01x02"
+    return f"{prefix}1 = <Wert>"
+
+
 def _bom_generic_value(ctx: RuleContext) -> list[Finding]:
+    """Flag values that carry no ordering information.
+
+    Covers the obvious placeholders as well as values that just repeat the
+    reference prefix, which is the most common way a schematic is left before
+    the BOM is generated.
+    """
     out = []
     for sym in ctx.design.component_symbols:
         if sym.exclude_from_bom or sym.is_power_symbol:
             continue
-        if sym.value.strip().upper() in _GENERIC_VALUES:
-            out.append(
-                Finding(
-                    rule="BOM-GENERIC-VALUE",
-                    severity=Severity.WARNING,
-                    title=f"{sym.ref} hat Platzhalterwert",
-                    detail=f"{sym.ref} hat den Wert '{sym.value}' - die Stückliste ist damit nicht eindeutig.",
-                    category="bom",
-                    refs=[sym.ref],
-                    fix="Konkreten Wert eintragen (z. B. 10k, 100nF, STM32F103).",
-                )
+        raw = sym.value.strip()
+        upper = raw.upper()
+        reason = ""
+        if upper in _GENERIC_VALUES:
+            reason = "Platzhalter"
+        elif upper in _PREFIX_PLACEHOLDERS:
+            reason = "Wert wiederholt nur das Bauteil-Präfix"
+        if not reason:
+            continue
+        out.append(
+            Finding(
+                rule="BOM-GENERIC-VALUE",
+                severity=Severity.WARNING,
+                title=f"{sym.ref} hat keinen konkreten Wert",
+                detail=(
+                    f"{sym.ref} hat den Wert '{raw}' ({reason}). "
+                    "Ohne spezifischen Wert ist die Stückliste nicht eindeutig "
+                    "und die Platine nicht bestellbar."
+                ),
+                category="bom",
+                refs=[sym.ref],
+                fix=f"Konkreten Wert eintragen, z. B. {_value_example(sym.designator_prefix)}.",
             )
+        )
     return out
 
 

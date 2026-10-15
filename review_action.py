@@ -21,46 +21,110 @@ if _HERE not in sys.path:
 from kicad_ai.ui import run  # noqa: E402
 
 
+# Document types KiCad can report on. The enum is a protobuf wrapper whose
+# keys are prefixed, e.g. "DOCTYPE_PCB" - plain "PCB" does not exist and a
+# getattr() on it silently yields None, which is what made project detection
+# fail before.
+_PCB_DOC_TYPE = "DOCTYPE_PCB"
+_SCHEMATIC_DOC_TYPE = "DOCTYPE_SCHEMATIC"
+
+# KiCad answers only for document types with a registered handler; the others
+# raise ApiError. Two seconds is also tight while an editor is busy.
+_IPC_TIMEOUT_MS = 15000
+
+
 def _project_from_ipc() -> str | None:
-    """Ask the running KiCad instance for the open project path."""
+    """Ask the running KiCad instance for the open project path.
+
+    In KiCad 10 only the PCB editor reports a usable ``project.path``. The
+    schematic editor returns a document with an empty project, so its filename
+    is matched against recently used files to recover the directory.
+    """
     try:
         from kipy import KiCad
         from kipy.proto.common.types import DocumentType
     except ImportError:
+        print("[kicad-ai] kipy nicht installiert - IPC nicht verfügbar", file=sys.stderr)
         return None
 
     try:
-        kicad = KiCad()
-    except Exception:
+        kicad = KiCad(timeout_ms=_IPC_TIMEOUT_MS)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[kicad-ai] IPC-Verbindung fehlgeschlagen: {exc}", file=sys.stderr)
         return None
 
-    for doc_type in (
-        getattr(DocumentType, "PCB", None),
-        getattr(DocumentType, "SCHEMATIC", None),
-    ):
+    schematic_filename = ""
+
+    for name in (_PCB_DOC_TYPE, _SCHEMATIC_DOC_TYPE):
+        doc_type = getattr(DocumentType, name, None)
         if doc_type is None:
             continue
         try:
             docs = kicad.get_open_documents(doc_type)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - no handler for this type
+            print(f"[kicad-ai] {name}: {exc}", file=sys.stderr)
             continue
-        for doc in docs:
-            path = getattr(doc, "path", "") or ""
-            if not path:
-                project = getattr(doc, "project", None)
-                path = getattr(project, "path", "") if project is not None else ""
-            if path:
-                return path
 
-    # Fallback: the project object itself carries the .kicad_pro path
-    try:
-        for doc in kicad.get_open_documents(getattr(DocumentType, "PCB", 0)):
-            project = kicad.get_project(doc)
-            path = getattr(getattr(project, "document", None), "path", "")
+        for doc in docs:
+            project = getattr(doc, "project", None)
+            path = getattr(project, "path", "") if project is not None else ""
             if path:
                 return path
-    except Exception:
-        pass
+            filename = str(getattr(doc, "board_filename", "") or "")
+            if filename and not schematic_filename:
+                schematic_filename = filename
+
+    if schematic_filename:
+        recovered = _find_project_dir(schematic_filename)
+        if recovered:
+            print(f"[kicad-ai] Projektordner aus Dateiname ermittelt: {recovered}", file=sys.stderr)
+            return recovered
+
+    return None
+
+
+def _find_project_dir(filename: str) -> str | None:
+    """Locate the directory of an open schematic via KiCad's recent-files list.
+
+    The KiCad 10 schematic editor reports the file name only, so the directory
+    is recovered from the project manager's session history.
+    """
+    import json
+
+    config = os.path.join(os.environ.get("APPDATA", ""), "kicad", "10.0", "kicad.json")
+    if not os.path.isfile(config):
+        return None
+    try:
+        with open(config, "r", encoding="utf-8", errors="replace") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+    candidates: list[str] = []
+    session = data.get("session", {})
+    if isinstance(session, dict):
+        for key, value in session.items():
+            if isinstance(value, list):
+                candidates.extend(str(item) for item in value)
+
+    def expand(paths: list[str]) -> str | None:
+        for raw in paths:
+            path = raw.replace("\\", "/")
+            if path.endswith("/" + filename):
+                return raw[: -len(filename)].rstrip("/\\")
+        return None
+
+    found = expand(candidates)
+    if found:
+        return found
+
+    # Fall back to a shallow scan of the KiCad projects folder.
+    projects = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "KiCad", "Projekte")
+    if os.path.isdir(projects):
+        for entry in sorted(os.listdir(projects)):
+            candidate = os.path.join(projects, entry, filename)
+            if os.path.isfile(candidate):
+                return os.path.join(projects, entry)
     return None
 
 

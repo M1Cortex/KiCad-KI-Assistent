@@ -217,6 +217,34 @@ class TestRules(unittest.TestCase):
         rules = {f.rule for f in check_all(RuleContext(design=design))}
         self.assertIn("SYM-DUPLICATE-REF", rules)
 
+    def test_detects_prefix_only_value(self):
+        """"R" on R1 is a placeholder: the BOM would not be orderable."""
+        design = Design(root_file="mem.kicad_sch")
+        props = {"Footprint": "R_0805", "Datasheet": "http://x"}
+        design.symbols = [
+            SymInstance(ref="R1", value="R", lib_id="Device:R", sheet_path="/", properties=props),
+            SymInstance(ref="R2", value="10k", lib_id="Device:R", sheet_path="/", properties=props),
+        ]
+        rules = {f.rule for f in check_all(RuleContext(design=design))}
+        self.assertIn("BOM-GENERIC-VALUE", rules)
+
+    def test_concrete_value_is_accepted(self):
+        design = Design(root_file="mem.kicad_sch")
+        props = {"Footprint": "R_0805", "Datasheet": "http://x"}
+        design.symbols = [
+            SymInstance(ref="R1", value="10k", lib_id="Device:R", sheet_path="/", properties=props),
+            SymInstance(ref="C1", value="100nF", lib_id="Device:C", sheet_path="/", properties=props),
+        ]
+        rules = {f.rule for f in check_all(RuleContext(design=design))}
+        self.assertNotIn("BOM-GENERIC-VALUE", rules)
+
+    def test_value_example_is_type_specific(self):
+        from kicad_ai.rules import _value_example
+
+        self.assertIn("10k", _value_example("R"))
+        self.assertIn("100nF", _value_example("C"))
+        self.assertIn("10uH", _value_example("L"))
+
     def test_no_connect_suppresses_floating_pin(self):
         design = Design(root_file="mem.kicad_sch")
         design.symbols = [
